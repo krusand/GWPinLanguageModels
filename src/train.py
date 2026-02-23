@@ -48,6 +48,16 @@ WEIGHT_DECAY = 0.1      # L2 Regularization
 GRAD_CLIP = 1.0         # To prevent exploding gradients
 
 # -----------------------------------------------------------------------------
+def print_model_size(model):
+    param_size = 0
+    for param in model.parameters():
+        param_size += param.nelement() * param.element_size()
+    buffer_size = 0
+    for buffer in model.buffers():
+        buffer_size += buffer.nelement() * buffer.element_size()
+
+    size_all_mb = (param_size + buffer_size) / 1024**2
+    print('model size: {:.3f}MB'.format(size_all_mb))
 
 def set_seed(seed: int) -> None:
     torch.manual_seed(seed)
@@ -126,9 +136,9 @@ def main():
     )
 
     # (optional) uncomment this for printing model size once
-    # print(f"Device: {DEVICE}")
-    # print(f"Model parameters: {model.get_num_params():,}")
-    # print(f"Training for {MAX_ITERS} iterations | batch={BATCH_SIZE} | block={BLOCK_SIZE}")
+    print(f"Device: {DEVICE}")
+    print(f"Model parameters: {model.get_num_params():,}")
+    print(f"Training for {MAX_ITERS} iterations | batch={BATCH_SIZE} | block={BLOCK_SIZE}")
 
     t0 = time.time()
     for it in range(MAX_ITERS + 1):

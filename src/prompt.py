@@ -32,6 +32,7 @@ def load_meta(data_dir: str):
         return pickle.load(f)
 
 
+
 def main():
     ckpt = torch.load(CKPT_PATH, map_location=DEVICE)
 
@@ -53,6 +54,7 @@ def main():
     config = GPTConfig(**model_cfg)
     model = GPT(config).to(DEVICE)
     model.load_state_dict(ckpt["model_state"])
+
     model.eval()
 
     idx = torch.tensor([encode(PROMPT)], dtype=torch.long, device=DEVICE)
