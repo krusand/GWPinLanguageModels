@@ -7,19 +7,28 @@ Focus:
 
 Source: https://github.com/karpathy/nanoGPT
 """
+# Batch size [16, 32, 64, 128]: BS: 32
+# N layers [4, 8, 12, 16] BS: 4
+# N embed [32, 64, 128, 256] BS: 128
 
 import os
 import time
 import pickle
 from dataclasses import asdict
+from codecarbon import EmissionsTracker
 
+from tqdm import tqdm
+import pandas as pd
 import numpy as np
 import torch
 
 from model import GPTConfig, GPT
-
+from pathlib import Path
+Path("./emissions").mkdir(exist_ok=True)
 # -----------------------------------------------------------------------------
 # Experiment configuration
+
+PROJECT_NAME = "training_phase"
 
 # I/O
 OUT_DIR = "out"
@@ -30,9 +39,18 @@ LOG_INTERVAL = 50
 SAVE_CHECKPOINT = True
 
 # Model (main tunables)
-N_LAYER = 4
+
+## We tune these:
+BS_BATCH_SIZE = 32
+BS_N_LAYER = 4
+BS_N_EMBD = 128
+
+BATCH_SIZEs = [16, 32, 64, 128]        # Number of sequences processed in parallel.
+N_LAYERs = [4, 8, 12, 16]
+N_EMBDs = [32, 64, 128, 256]
+
+
 N_HEAD = 4
-N_EMBD = 128
 DROPOUT = 0.1
 BIAS = True
 
@@ -40,7 +58,6 @@ BIAS = True
 SEED = 1
 DEVICE = "cpu"          # If you can, try also seeing consumption when using gpu (change this to 'cuda' if torch.cuda.is_available() else 'cpu')
 DTYPE = "float32"       
-BATCH_SIZE = 32         # Number of sequences processed in parallel.
 BLOCK_SIZE = 256        # Maximum context length for predictions (e.g. 128 or 256). The longer the block size, the more memory and compute it requires, but it can also lead to better performance.
 MAX_ITERS = 2000        # Total number of training iterations. The more iterations, the better the model can perform, but it also takes more time and energy to train.
 LEARNING_RATE = 3e-4    # the standard starting learning rate, often good enough for a first try
@@ -58,6 +75,18 @@ def print_model_size(model):
 
     size_all_mb = (param_size + buffer_size) / 1024**2
     print('model size: {:.3f}MB'.format(size_all_mb))
+
+def get_model_size(model):
+    param_size = 0
+    for param in model.parameters():
+        param_size += param.nelement() * param.element_size()
+    buffer_size = 0
+    for buffer in model.buffers():
+        buffer_size += buffer.nelement() * buffer.element_size()
+
+    size_all_mb = (param_size + buffer_size) / 1024**2
+    return size_all_mb
+
 
 def set_seed(seed: int) -> None:
     torch.manual_seed(seed)
@@ -111,8 +140,11 @@ def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     set_seed(SEED)
 
+    run_params_main = dict()
+
     meta = load_meta(DATA_DIR)
     vocab_size = meta["vocab_size"] if meta and "vocab_size" in meta else 50304
+    run_params_main["vocab_size"] = vocab_size
 
     cfg = GPTConfig(
         block_size=BLOCK_SIZE,
@@ -134,11 +166,14 @@ def main():
         weight_decay=WEIGHT_DECAY,
         betas=(0.9, 0.95),
     )
+    run_params_main["optimizer"] = optimizer.__class__.__name__
 
     # (optional) uncomment this for printing model size once
     print(f"Device: {DEVICE}")
     print(f"Model parameters: {model.get_num_params():,}")
     print(f"Training for {MAX_ITERS} iterations | batch={BATCH_SIZE} | block={BLOCK_SIZE}")
+    run_params_main["n_model_params"] = model.get_num_params()
+    run_params_main["model_size_mb"] = get_model_size(model)
 
     t0 = time.time()
     for it in range(MAX_ITERS + 1):
@@ -200,5 +235,68 @@ def main():
         }
         save_checkpoint(OUT_DIR, model, optimizer, MAX_ITERS, config_dump)
 
+    return run_params_main
+
+    
 if __name__ == "__main__":
-    main()
+
+    batch_size_configs = [{'BATCH_SIZE': batch_size, 'N_LAYER': BS_N_LAYER, 'N_EMBD': BS_N_EMBD} for batch_size in BATCH_SIZEs]
+    n_layer_configs = [{'BATCH_SIZE': BS_BATCH_SIZE, 'N_LAYER': n_layer, 'N_EMBD': BS_N_EMBD} for n_layer in N_LAYERs]
+    n_embd_configs = [{'BATCH_SIZE': BS_BATCH_SIZE, 'N_LAYER': BS_N_LAYER, 'N_EMBD': n_embd} for n_embd in N_EMBDs]
+
+    model_configs = batch_size_configs + n_layer_configs + n_embd_configs
+    
+    for model_config in tqdm(model_configs):
+        BATCH_SIZE = model_config["BATCH_SIZE"]
+        N_LAYER = model_config["N_LAYER"]
+        N_EMBD = model_config["N_EMBD"]
+
+        tracker = EmissionsTracker(project_name=PROJECT_NAME
+                                , log_level='critical'
+                                , output_dir="./emissions")
+        tracker.start()
+        try:
+            start_time = time.time()
+            run_params_main = main()
+            end_time = time.time()
+            training_time = end_time - start_time
+
+        finally:
+            emissions = tracker.stop()
+            if emissions is None:
+                emissions = 0
+
+            run_params = {  "project_name": PROJECT_NAME,
+                            "run_id": str(tracker.run_id),
+                            "start_time": start_time,
+                            "end_time": end_time,
+                            "training_time_secs": training_time,
+                            "emissions": emissions,
+                            "BATCH_SIZE": BATCH_SIZE,
+                            "BLOCK_SIZE": BLOCK_SIZE,
+                            "MAX_ITERS": MAX_ITERS,
+                            "LEARNING_RATE": LEARNING_RATE,
+                            "WEIGHT_DECAY": WEIGHT_DECAY,
+                            "GRAD_CLIP": GRAD_CLIP,
+                            "DTYPE": DTYPE,
+                            "DEVICE": DEVICE,
+                            "EVAL_INTERVAL": EVAL_INTERVAL,
+                            "EVAL_ITERS": EVAL_ITERS,
+                            "LOG_INTERVAL": LOG_INTERVAL,
+                            "SAVE_CHECKPOINT": SAVE_CHECKPOINT,
+                            "N_LAYER": N_LAYER,
+                            "N_HEAD": N_HEAD,
+                            "N_EMBD": N_EMBD,
+                            "DROPOUT": DROPOUT,
+                            "BIAS": BIAS
+                        }
+
+            
+            run_params.update(run_params_main)
+            run_params.update(tracker.get_detected_hardware())
+
+            df = pd.DataFrame([run_params], index=[0])
+            df.to_csv(f"./emissions/run_params_{PROJECT_NAME}.csv", index=False, mode='a', header=not os.path.exists(f"./emissions/run_params_{PROJECT_NAME}.csv"))
+
+
+
