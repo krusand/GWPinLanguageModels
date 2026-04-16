@@ -4,3 +4,4 @@ __pycache__/
 /data/val.bin
 /data/input.txt
 /out
+/emissions/powermetrics_log.txt
