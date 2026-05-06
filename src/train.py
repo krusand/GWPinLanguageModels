@@ -266,6 +266,7 @@ def main():
                 "model": asdict(cfg),
             }
             save_checkpoint(OUT_DIR, model, optimizer, epoch, config_dump)
+        torch.mps.empty_cache()
 
     print("Training completed.")
 
