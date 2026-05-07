@@ -20,7 +20,7 @@ from tqdm import tqdm
 from model import GPT, GPTConfig
 import time
 from pathlib import Path
-Path("./emissions").mkdir(exist_ok=True)
+Path("./emissions_corrected").mkdir(exist_ok=True)
 
 
 PROJECT_NAME = "prompting_phase"
@@ -41,7 +41,7 @@ BS_MAX_NEW_TOKENS = 200
 BS_TEMPERATURE = 1.0
 BS_TOP_K = 50
 
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+DEVICE = "cpu"
 # ----------------------------
 
 
@@ -103,7 +103,7 @@ if __name__ == "__main__":
 
         tracker = EmissionsTracker(project_name=PROJECT_NAME
                                 , log_level='critical'
-                                , output_dir="./emissions")
+                                , output_dir="./emissions_corrected")
         tracker.start()
         try:
             start_time = time.time()
@@ -130,7 +130,7 @@ if __name__ == "__main__":
             run_params.update(tracker.get_detected_hardware())
 
             df = pd.DataFrame([run_params], index=[0])
-            df.to_csv(f"./emissions/run_params_{PROJECT_NAME}.csv", index=False, mode='a', header=not os.path.exists(f"./emissions/run_params_{PROJECT_NAME}.csv"))
+            df.to_csv(f"./emissions_corrected/run_params_{PROJECT_NAME}.csv", index=False, mode='a', header=not os.path.exists(f"./emissions_corrected/run_params_{PROJECT_NAME}.csv"))
 
 
 

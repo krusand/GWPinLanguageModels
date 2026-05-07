@@ -45,8 +45,8 @@ SAVE_CHECKPOINT = True
 
 ## We tune these:
 BS_BATCH_SIZE = 32
-BS_N_LAYER = 16  # 4
-BS_N_EMBD = 256  # 128
+BS_N_LAYER = 4
+BS_N_EMBD = 128
 
 BATCH_SIZEs = [16, 32, 64, 128]  # Number of sequences processed in parallel.
 N_LAYERs = [4, 8, 12, 16]
@@ -62,7 +62,7 @@ SEED = 1
 DEVICE = "mps"  # If you can, try also seeing consumption when using gpu (change this to 'cuda' if torch.cuda.is_available() else 'cpu')
 DTYPE = "float32"
 BLOCK_SIZE = 256  # Maximum context length for predictions (e.g. 128 or 256). The longer the block size, the more memory and compute it requires, but it can also lead to better performance.
-N_EPOCHS = 5
+N_EPOCHS = 1
 MAX_ITERS = 2000  # Total number of training iterations. The more iterations, the better the model can perform, but it also takes more time and energy to train.
 LEARNING_RATE = (
     3e-4  # the standard starting learning rate, often good enough for a first try
@@ -137,16 +137,24 @@ def create_dataloader(
     device: str,
     batch_size: int,
     num_workers: int = 0,
+    sample_fraction: float = 1.0
 ):
     dataset = MemmapTextDataset(data_dir, split, block_size)
 
     is_train = split == "train"
     is_not_cpu = device != "cpu"
+    shuffle_data = is_train
+    sampler=None
+    if sample_fraction < 1.0:
+        num_samples = int(len(dataset) * sample_fraction)
+        sampler = torch.utils.data.RandomSampler(dataset, replacement=False, num_samples=num_samples)
+        shuffle_data=False
 
     dataloader = torch.utils.data.DataLoader(
         dataset,
         batch_size=batch_size,
-        shuffle=is_train,
+        shuffle=shuffle_data,
+        sampler=sampler,
         num_workers=num_workers,
         pin_memory=is_not_cpu,
         drop_last=True,
@@ -210,14 +218,10 @@ def main():
     run_params_main["n_model_params"] = model.get_num_params()
     run_params_main["model_size_mb"] = get_model_size(model)
 
-    train_dataloader = create_dataloader(
-        "train", DATA_DIR, BLOCK_SIZE, DEVICE, BATCH_SIZE
-    )
-    val_dataloader = create_dataloader("val", DATA_DIR, BLOCK_SIZE, DEVICE, BATCH_SIZE)
+    train_dataloader = create_dataloader("train", DATA_DIR, BLOCK_SIZE, DEVICE, BATCH_SIZE, sample_fraction=0.25)
+    val_dataloader = create_dataloader("val", DATA_DIR, BLOCK_SIZE, DEVICE, BATCH_SIZE, sample_fraction=0.25)
 
-    print(
-        f"Training for {N_EPOCHS} epochs | Training on {len(train_dataloader)} data batches| batch={BATCH_SIZE} | block={BLOCK_SIZE} | Total tokens={(len(train_dataloader)+len(val_dataloader))*BLOCK_SIZE*BATCH_SIZE}"
-    )
+    print(f"Training for {N_EPOCHS} epochs | Training on {len(train_dataloader)} data batches| batch={BATCH_SIZE} | block={BLOCK_SIZE} | Total tokens={(len(train_dataloader)+len(val_dataloader))*BLOCK_SIZE*BATCH_SIZE}")
 
     for epoch in range(N_EPOCHS):
         epoch_start_time = time.time()
@@ -359,8 +363,8 @@ if __name__ == "__main__":
 
             df = pd.DataFrame([run_params], index=[0])
             df.to_csv(
-                f"./emissions/run_params_{PROJECT_NAME}.csv",
+                f"./emissions_corrected/run_params_{PROJECT_NAME}.csv",
                 index=False,
                 mode="a",
-                header=not os.path.exists(f"./emissions/run_params_{PROJECT_NAME}.csv"),
+                header=not os.path.exists(f"./emissions_corrected/run_params_{PROJECT_NAME}.csv"),
             )
