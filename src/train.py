@@ -218,8 +218,8 @@ def main():
     run_params_main["n_model_params"] = model.get_num_params()
     run_params_main["model_size_mb"] = get_model_size(model)
 
-    train_dataloader = create_dataloader("train", DATA_DIR, BLOCK_SIZE, DEVICE, BATCH_SIZE, sample_fraction=0.25)
-    val_dataloader = create_dataloader("val", DATA_DIR, BLOCK_SIZE, DEVICE, BATCH_SIZE, sample_fraction=0.25)
+    train_dataloader = create_dataloader("train", DATA_DIR, BLOCK_SIZE, DEVICE, BATCH_SIZE, sample_fraction=0.05)
+    val_dataloader = create_dataloader("val", DATA_DIR, BLOCK_SIZE, DEVICE, BATCH_SIZE, sample_fraction=0.05)
 
     print(f"Training for {N_EPOCHS} epochs | Training on {len(train_dataloader)} data batches| batch={BATCH_SIZE} | block={BLOCK_SIZE} | Total tokens={(len(train_dataloader)+len(val_dataloader))*BLOCK_SIZE*BATCH_SIZE}")
 

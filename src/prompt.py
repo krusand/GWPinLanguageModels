@@ -41,7 +41,7 @@ BS_MAX_NEW_TOKENS = 200
 BS_TEMPERATURE = 1.0
 BS_TOP_K = 50
 
-DEVICE = "cpu"
+DEVICE = "mps"
 # ----------------------------
 
 
